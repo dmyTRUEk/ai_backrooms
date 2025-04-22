@@ -147,8 +147,8 @@ class FrameDataset(Dataset):
 				# next_action = "r"
 				self.samples.append((filename, next_filename, action))
 
-		print(self.samples)
-		print(f"{len(self.samples) = }")
+		# print(self.samples)
+		print(f"TRAINING SET SIZE: {len(self.samples)}")
 
 
 	def __len__(self):
