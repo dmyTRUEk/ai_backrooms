@@ -77,6 +77,7 @@ class FrameDataset(Dataset):
 	def __init__(self, folder):
 		self.folder = folder
 		self.samples = []
+		self.img_cache: dict[int, tuple] = {} # Cache imgs for that extra zoomies >:3
 		self.transform = transforms.Compose([
 			transforms.Resize(IMG_SIZE),
 			transforms.ToTensor(),
@@ -117,11 +118,15 @@ class FrameDataset(Dataset):
 	def __len__(self):
 		return len(self.samples)
 
-	# @lru_cache(maxsize=None)
+	# @lru_cache(maxsize=None) # bad?
 	def __getitem__(self, idx):
 		current_img_name, next_img_name, action = self.samples[idx]
-		current_img = Image.open(os.path.join(self.folder, current_img_name)).convert('RGB')
-		next_img = Image.open(os.path.join(self.folder, next_img_name)).convert('RGB')
+		if self.img_cache.get(idx) is None:
+			current_img = Image.open(os.path.join(self.folder, current_img_name)).convert('RGB')
+			next_img = Image.open(os.path.join(self.folder, next_img_name)).convert('RGB')
+			self.img_cache[idx] = (current_img, next_img)
+		else:
+			current_img, next_img = self.img_cache[idx]
 
 		current_tensor = self.transform(current_img)
 		next_tensor = self.transform(next_img)
