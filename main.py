@@ -1,22 +1,24 @@
 import os
 from PIL import Image
-# import numpy as np
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-# import torch.nn.functional as F
 
 # from functools import lru_cache
 # from sys import exit as sys_exit
 
 
 
+IS_TEST = False
+# IS_TEST = True
+
 # Hyper-cutesy parameters
 BATCH_SIZE = 8
-EPOCHS = 100
+EPOCHS = 100 if not IS_TEST else 2
 LEARNING_RATE = 1e-3
 IMG_SIZE = (240, 320)
+DATASET_FOR_TEST_LIMIT = 30
 
 
 
@@ -34,6 +36,7 @@ def main():
 	criterion = nn.MSELoss()
 
 	train(model, dataloader, optimizer, criterion, EPOCHS)
+	print()
 
 	# "game" loop:
 	this_frame = load_img("../traininggrounds/screenshots/r001/s_000000_l.jpg")
@@ -54,7 +57,7 @@ def main():
 class FramePredictor(nn.Module):
 	def __init__(self):
 		super(FramePredictor, self).__init__()
-		# Encoder for current image
+		# Encoder for this image
 		self.encoder = nn.Sequential(
 			nn.Conv2d(3, 32, 4, stride=2, padding=1),  # 120x160
 			nn.ReLU(),
@@ -90,14 +93,14 @@ def train(model, dataloader, optimizer, criterion, epochs: int):
 	for epoch in range(epochs):
 		total_loss = 0
 		i_max = len(dataloader)
-		for i, (current_img, action, next_img) in enumerate(dataloader):
+		for i, (this_img, action, next_img) in enumerate(dataloader):
 			print(f"{i+1}/{i_max} ", end="", flush=True)
-			current_img = current_img.to(device)
+			this_img = this_img.to(device)
 			action = action.to(device)
 			next_img = next_img.to(device)
 
 			optimizer.zero_grad()
-			output = model(current_img, action)
+			output = model(this_img, action)
 			loss = criterion(output, next_img)
 			loss.backward()
 			optimizer.step()
@@ -114,18 +117,14 @@ class FrameDataset(Dataset):
 		self.folder = folder
 		self.samples = []
 		self.img_cache: dict[int, tuple] = {} # Cache imgs for that extra zoomies >:3
-		self.transform = transforms.Compose([
-			transforms.Resize(IMG_SIZE),
-			transforms.ToTensor(),
-		])
 
 		all_files = set(os.listdir(folder))
 		# print(all_files)
 		for filename in all_files:
 			_, idx, action = filename.split(".")[0].split("_")
 			idx = int(idx)
-			# if len(self.samples) >= 100:
-			# 	break
+			if IS_TEST and len(self.samples) >= DATASET_FOR_TEST_LIMIT:
+				break
 
 			next_filename = f"s_{idx+1:06}_f.jpg"
 			if next_filename in all_files:
@@ -165,8 +164,8 @@ class FrameDataset(Dataset):
 		else:
 			this_img, next_img = self.img_cache[idx]
 
-		this_tensor = self.transform(this_img)
-		next_tensor = self.transform(next_img)
+		this_tensor = img_pil_to_tensor(this_img)
+		next_tensor = img_pil_to_tensor(next_img)
 		action_tensor = action_to_tensor(action)
 
 		return this_tensor, action_tensor, next_tensor
@@ -183,29 +182,35 @@ def action_to_tensor(action):
 
 
 # Inference function desu~
-def predict_next_frame(model, current_img, action):
+def predict_next_frame(model, this_img, action):
 	model.eval()
 	with torch.no_grad():
-		current_img = current_img.to(device).unsqueeze(0)
+		this_img = this_img.to(device).unsqueeze(0)
 		action = action.to(device).unsqueeze(0)
-		predicted = model(current_img, action)
+		predicted = model(this_img, action)
 		return predicted.squeeze(0).cpu()
 
 
 
 def load_img(filepath: str):
-	img = Image.open(filepath).convert('RGB')
-	transform = transforms.Compose([
-		transforms.Resize((240, 320)),
-		transforms.ToTensor()
-	])
-	return transform(img)
+	img_pil = Image.open(filepath).convert('RGB')
+	return img_pil_to_tensor(img_pil)
 
 def save_img(img_tensor, frame_n: int):
-	to_pil = transforms.ToPILImage()
-	img = to_pil(img_tensor.clamp(0, 1))
-	img.save(f"frames/f_{frame_n:06}.jpg")
+	filepath = f"frames/f_{frame_n:06}.jpg"
+	img_pil = img_tensor_to_pil(img_tensor)
+	img_pil.save(filepath)
 
+
+
+def img_pil_to_tensor(img_pil):
+	return torch.from_numpy(np.array(img_pil, dtype=np.float32) / 255).permute(2, 0, 1)
+
+def img_tensor_to_pil(img_tensor):
+	img = img_tensor.detach().cpu().clamp(0, 1)  # safety uwu
+	arr_np = (img.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+	img_pil = Image.fromarray(arr_np)
+	return img_pil
 
 
 

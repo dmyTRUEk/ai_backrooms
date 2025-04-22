@@ -15,10 +15,11 @@
 				(pkgs.python3.withPackages (python-pkgs: with python-pkgs; [
 					torch
 					# torchWithRocm
-					torchvision
+					# torchWithVulkan
+					# torchvision
 					# torchvision-bin
 					pillow
-					# Add other python dependencies here:
+					numpy
 				]))
 				# Add other dependencies here:
 			];
