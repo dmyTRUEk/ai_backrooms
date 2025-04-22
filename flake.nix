@@ -5,13 +5,18 @@
 	outputs = { self, nixpkgs }:
 	let
 		system = "x86_64-linux";
-		pkgs = import nixpkgs { inherit system; };
+		pkgs = import nixpkgs {
+			inherit system;
+			config.allowUnfree = true;
+		};
 	in {
 		devShells.${system}.default = pkgs.mkShell {
 			packages = with pkgs; [
 				(pkgs.python3.withPackages (python-pkgs: with python-pkgs; [
 					torch
+					# torchWithRocm
 					torchvision
+					# torchvision-bin
 					pillow
 					# Add other python dependencies here:
 				]))
