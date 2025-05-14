@@ -1,3 +1,5 @@
+# next frame predictor
+
 import os
 from PIL import Image
 import numpy as np
@@ -13,43 +15,71 @@ from torch.utils.data import Dataset, DataLoader
 IS_TEST = False
 # IS_TEST = True
 
-# Hyper-cutesy parameters
+# Hyper-cutesy parameters UwU
 BATCH_SIZE = 8
-EPOCHS = 100 if not IS_TEST else 2
+EPOCHS = 10 if not IS_TEST else 2
 LEARNING_RATE = 1e-3
 IMG_SIZE = (240, 320)
-DATASET_FOR_TEST_LIMIT = 30
+DATASET_SIZE_LIMIT = 10**4 if not IS_TEST else 30
+ACTIONS_NS = [1, 3, 10, 30, 100] if not IS_TEST else [1, 3]
+
+INITIAL_FRAME = '../traininggrounds/screenshots/r001/s_000000_l.jpg'
 
 
 
-device_str = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"DEVICE: {device_str}")
+device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f'DEVICE: {device_str}')
 device = torch.device(device_str)
 
 def main():
-	# Setup
-	dataset = FrameDataset("../traininggrounds/screenshots/r001/")
-	dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-
 	model = FramePredictor().to(device)
-	optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-	criterion = nn.MSELoss()
+	print('Model created.')
+	this_frame = load_img(INITIAL_FRAME)
+	frame_i = 1
+	while (inp:=input('> ')) != 'q':
+		try:
+			if inp in ['?', 'h', 'help']:
+				print(HELP_MSG)
 
-	train(model, dataloader, optimizer, criterion, EPOCHS)
-	print()
+			elif inp == '0':
+				this_frame = load_img(INITIAL_FRAME)
+				continue
 
-	# "game" loop:
-	this_frame = load_img("../traininggrounds/screenshots/r001/s_000000_l.jpg")
-	frame_n = 1
-	while (input_:=input("fblr0? ")) != "q":
-		# TODO: match case, continue training
-		if input_ not in {"f", "b", "l", "r", "0"}: continue
-		if input_ == "0":
-			this_frame = load_img("../traininggrounds/screenshots/r001/s_000000_l.jpg")
-			continue
-		this_frame = predict_next_frame(model, this_frame, action_to_tensor(input_))
-		save_img(this_frame, frame_n)
-		frame_n += 1
+			elif inp[0] in ['f', 'b', 'l', 'r']:
+				n = max(1, int('0'+inp[1:]))
+				for _ in range(n):
+					this_frame = predict_next_frame_prod(model, this_frame, action_to_tensor(inp[0]))
+					save_img(this_frame, frame_i)
+					frame_i += 1
+
+			elif inp == 't':
+				print('Input training params:')
+
+				epochs = input(f'Epochs (default is {EPOCHS}): ')
+				epochs = int(epochs) if epochs != '' else EPOCHS
+
+				learning_rate = input(f'Learning Rate (default is {LEARNING_RATE}): ')
+				learning_rate = float(learning_rate) if learning_rate != '' else LEARNING_RATE
+
+				dataset_size_limit = input(f'Dataset Size Limit (default is {DATASET_SIZE_LIMIT}): ')
+				dataset_size_limit = int(dataset_size_limit) if dataset_size_limit != '' else DATASET_SIZE_LIMIT
+
+				actions_ns = input(f'Actions NS (default is {ACTIONS_NS}): ')
+				actions_ns = list(map(int, string_multisplit(actions_ns, [',', ' ']))) if actions_ns != '' else ACTIONS_NS
+
+				print()
+				print('Starting training...')
+				print()
+
+				for actions_n in actions_ns:
+					train(model, epochs=epochs, learning_rate=learning_rate, dataset_size_limit=dataset_size_limit, actions_n=actions_n)
+					print()
+
+			else:
+				print('Unknown input. Use `?` or `h` or `help` to get help.')
+
+		except Exception as e:
+			print(f'Error occured: {e}')
 
 
 
@@ -88,66 +118,75 @@ class FramePredictor(nn.Module):
 
 
 # Training time OwO <3
-def train(model, dataloader, optimizer, criterion, epochs: int):
+def train(
+	model,
+	*,
+	epochs: int,
+	learning_rate: float,
+	dataset_size_limit: None | int,
+	actions_n: int,
+):
+	dataset = FrameDataset('../traininggrounds/screenshots/r001/', dataset_size_limit=dataset_size_limit, actions_n=actions_n)
+	dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+	optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+	criterion = nn.MSELoss()
 	model.train()
+	# torch.autograd.set_detect_anomaly(True)
+
 	for epoch in range(epochs):
 		total_loss = 0
 		i_max = len(dataloader)
-		for i, (this_img, action, next_img) in enumerate(dataloader):
-			print(f"{i+1}/{i_max} ", end="", flush=True)
-			this_img = this_img.to(device)
-			action = action.to(device)
-			next_img = next_img.to(device)
 
-			optimizer.zero_grad()
-			output = model(this_img, action)
-			loss = criterion(output, next_img)
-			loss.backward()
-			optimizer.step()
+		for traindata_i, (imgs, actions) in enumerate(dataloader):
+			print(f'{traindata_i+1}/{i_max} ', end='', flush=True)
 
-			total_loss += loss.item()
+			this_img = imgs[0].to(device)
+			for i, action in enumerate(actions):
+				# input:
+				# this_img = imgs[i].to(device)
+				action = actions[i].to(device)
+				next_img = imgs[i+1].to(device)
 
-		print(f"\nEpoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}")
+				optimizer.zero_grad()
+				output = model(this_img, action)
+				loss = criterion(output, next_img)
+				loss.backward(retain_graph=True)
+				optimizer.step()
+
+				total_loss += loss.item()
+
+				this_img = output.detach()
+
+		print()
+		print(f'Actions: {actions_n}, Epoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}')
 
 
 
 # UwU Dataset Loader
 class FrameDataset(Dataset):
-	def __init__(self, folder):
+	def __init__(self, folder: str, *, dataset_size_limit: None | int = None, actions_n: int):
+		assert actions_n > 0
 		self.folder = folder
-		self.samples = []
-		self.img_cache: dict[int, tuple] = {} # Cache imgs for that extra zoomies >:3
+		self.samples: list[tuple[list[str], list[str]]] = []
+		self.img_cache: dict[str, Image.Image] = {} # Cache imgs for that extra zoomies >:3
 
-		all_files = set(os.listdir(folder))
-		# print(all_files)
-		for filename in all_files:
-			_, idx, action = filename.split(".")[0].split("_")
-			idx = int(idx)
-			if IS_TEST and len(self.samples) >= DATASET_FOR_TEST_LIMIT:
+		all_files = sorted(os.listdir(folder))
+		for file_i, filename in enumerate(all_files):
+			if file_i+actions_n >= len(all_files):
+				break
+			if dataset_size_limit is not None and len(self.samples) >= dataset_size_limit:
 				break
 
-			next_filename = f"s_{idx+1:06}_f.jpg"
-			if next_filename in all_files:
-				# next_action = "f"
-				self.samples.append((filename, next_filename, action))
-
-			next_filename = f"s_{idx+1:06}_b.jpg"
-			if next_filename in all_files:
-				# next_action = "b"
-				self.samples.append((filename, next_filename, action))
-
-			next_filename = f"s_{idx+1:06}_l.jpg"
-			if next_filename in all_files:
-				# next_action = "l"
-				self.samples.append((filename, next_filename, action))
-
-			next_filename = f"s_{idx+1:06}_r.jpg"
-			if next_filename in all_files:
-				# next_action = "r"
-				self.samples.append((filename, next_filename, action))
+			filenames = [filename]
+			actions = []
+			for k in range(1, actions_n+1):
+				filenames.append(all_files[file_i+k])
+				actions.append(action_from_filename(all_files[file_i+k-1]))
+			self.samples.append((filenames.copy(), actions.copy()))
 
 		# print(self.samples)
-		print(f"TRAINING SET SIZE: {len(self.samples)}")
+		print(f'TRAINING SET SIZE: {len(self.samples)}')
 
 
 	def __len__(self):
@@ -156,20 +195,27 @@ class FrameDataset(Dataset):
 
 	# @lru_cache(maxsize=None) # bad?
 	def __getitem__(self, idx):
-		this_img_name, next_img_name, action = self.samples[idx]
-		if self.img_cache.get(idx) is None:
-			this_img = Image.open(os.path.join(self.folder, this_img_name)).convert('RGB')
-			next_img = Image.open(os.path.join(self.folder, next_img_name)).convert('RGB')
-			self.img_cache[idx] = (this_img, next_img)
-		else:
-			this_img, next_img = self.img_cache[idx]
+		img_names, actions = self.samples[idx]
 
-		this_tensor = img_pil_to_tensor(this_img)
-		next_tensor = img_pil_to_tensor(next_img)
-		action_tensor = action_to_tensor(action)
+		imgs = []
+		for img_name in img_names:
+			if self.img_cache.get(img_name) is None:
+				img = Image.open(os.path.join(self.folder, img_name)).convert('RGB')
+				self.img_cache[img_name] = img
+			else:
+				img = self.img_cache[img_name]
+			imgs.append(img)
 
-		return this_tensor, action_tensor, next_tensor
+		img_tensors = [img_pil_to_tensor(img) for img in imgs]
+		action_tensors = [action_to_tensor(action) for action in actions]
 
+		return img_tensors, action_tensors
+
+
+
+def action_from_filename(filename: str) -> str:
+	_f, _idx, action = filename.split('.')[0].split('_')
+	return action
 
 
 # Helper to turn action into one-hot vector :3
@@ -182,7 +228,7 @@ def action_to_tensor(action):
 
 
 # Inference function desu~
-def predict_next_frame(model, this_img, action):
+def predict_next_frame_prod(model, this_img, action):
 	model.eval()
 	with torch.no_grad():
 		this_img = this_img.to(device).unsqueeze(0)
@@ -196,8 +242,8 @@ def load_img(filepath: str):
 	img_pil = Image.open(filepath).convert('RGB')
 	return img_pil_to_tensor(img_pil)
 
-def save_img(img_tensor, frame_n: int):
-	filepath = f"frames/f_{frame_n:06}.jpg"
+def save_img(img_tensor, frame_i: int):
+	filepath = f'frames/f_{frame_i:06}.jpg'
 	img_pil = img_tensor_to_pil(img_tensor)
 	img_pil.save(filepath)
 
@@ -214,7 +260,27 @@ def img_tensor_to_pil(img_tensor):
 
 
 
+def string_multisplit(string: str, seps: list[str]) -> list[str]:
+	prev = [string]
+	for sep in seps:
+		next = []
+		for s in prev:
+			next.extend(s.split(sep))
+		prev = next
+	return [s for s in prev if s != '']
 
-if __name__ == "__main__":
+
+
+
+
+HELP_MSG = '''\
+todo help msg
+'''
+
+
+
+
+
+if __name__ == '__main__':
 	main()
 
