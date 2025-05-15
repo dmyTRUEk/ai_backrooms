@@ -21,7 +21,7 @@ EPOCHS = 10 if not IS_TEST else 2
 LEARNING_RATE = 1e-3
 IMG_SIZE = (240, 320)
 DATASET_SIZE_LIMIT = 10**4 if not IS_TEST else 30
-ACTIONS_NS = [1, 3, 10, 30, 100] if not IS_TEST else [1, 3]
+ACTIONS_NS = [1, 3, 10] if not IS_TEST else [1, 3]
 
 INITIAL_FRAME = '../traininggrounds/screenshots/r001/s_000000_l.jpg'
 
@@ -41,9 +41,12 @@ def main():
 			if inp in ['?', 'h', 'help']:
 				print(HELP_MSG)
 
+			elif inp == 'reset':
+				model = FramePredictor().to(device)
+				print('Model reset.')
+
 			elif inp == '0':
 				this_frame = load_img(INITIAL_FRAME)
-				continue
 
 			elif inp[0] in ['f', 'b', 'l', 'r']:
 				n = max(1, int('0'+inp[1:]))
@@ -74,6 +77,8 @@ def main():
 				for actions_n in actions_ns:
 					train(model, epochs=epochs, learning_rate=learning_rate, dataset_size_limit=dataset_size_limit, actions_n=actions_n)
 					print()
+
+			# TODO: save/load NN to/from a file
 
 			else:
 				print('Unknown input. Use `?` or `h` or `help` to get help.')
@@ -129,7 +134,7 @@ def train(
 	dataset = FrameDataset('../traininggrounds/screenshots/r001/', dataset_size_limit=dataset_size_limit, actions_n=actions_n)
 	dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-	optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+	optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate) # TODO: try alternatives: AdamW, Lion
 	criterion = nn.MSELoss()
 	model.train()
 	# torch.autograd.set_detect_anomaly(True)
@@ -138,8 +143,9 @@ def train(
 		total_loss = 0
 		i_max = len(dataloader)
 
+		print(f'/{i_max}:', end='', flush=True)
 		for traindata_i, (imgs, actions) in enumerate(dataloader):
-			print(f'{traindata_i+1}/{i_max} ', end='', flush=True)
+			print(f' {traindata_i+1}', end='', flush=True)
 
 			this_img = imgs[0].to(device)
 			for i, action in enumerate(actions):
@@ -159,7 +165,10 @@ def train(
 				this_img = output.detach()
 
 		print()
-		print(f'Actions: {actions_n}, Epoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}')
+		print(f'--- Actions: {actions_n} --- Epoch: {epoch+1}/{epochs} --- Loss: {total_loss:.4f} ---')
+		# TODO: relative loss
+		# TODO: time spent
+	# TODO: time spent
 
 
 
@@ -172,7 +181,7 @@ class FrameDataset(Dataset):
 		self.img_cache: dict[str, Image.Image] = {} # Cache imgs for that extra zoomies >:3
 
 		all_files = sorted(os.listdir(folder))
-		for file_i, filename in enumerate(all_files):
+		for file_i, filename in enumerate(all_files): # TODO: random order
 			if file_i+actions_n >= len(all_files):
 				break
 			if dataset_size_limit is not None and len(self.samples) >= dataset_size_limit:
