@@ -16,10 +16,9 @@
 					torch
 					# torchWithRocm
 					# torchWithVulkan
-					# torchvision
-					# torchvision-bin
 					pillow
 					numpy
+					pipe
 				]))
 				# Add other dependencies here:
 			];
