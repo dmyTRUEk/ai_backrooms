@@ -227,10 +227,10 @@ class FrameDataset(Dataset):
 
 		all_files = os.listdir(folder) | sorted_
 		for file_i, filename in all_files | enumerate_ | list_ | shuffled_:
-			if file_i+actions_n >= len(all_files):
-				break
 			if dataset_size_limit is not None and len(self.samples) >= dataset_size_limit:
 				break
+			if file_i+actions_n >= len(all_files):
+				continue
 
 			filenames = [filename]
 			actions = []
