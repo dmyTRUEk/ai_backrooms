@@ -15,6 +15,8 @@ from pipe import enumerate as enumerate_, map as map_, filter as filter_
 from pipe_ext import int_, list_, shuffled_, sorted_, string_multisplit_, time_to_my_format_, to_base36_
 
 
+__version__ = "0.3.3"
+
 
 IS_TEST = False
 # IS_TEST = True
@@ -329,7 +331,8 @@ def load_nn() -> FramePredictor:
 
 
 
-HELP_MSG = '''\
+HELP_MSG = f'''\
+Backrooms AI v{__version__}
 Internal CLI commands:
 ? h help 	get help message
 reset    	reset NN
