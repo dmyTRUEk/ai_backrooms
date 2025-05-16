@@ -1,4 +1,5 @@
 /.direnv
 /__pycache__
 /frames*
+/datasets
 *.pth

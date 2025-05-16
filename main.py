@@ -15,7 +15,7 @@ from pipe import enumerate as enumerate_, map as map_, filter as filter_
 from pipe_ext import int_, list_, shuffled_, sorted_, string_multisplit_, time_to_my_format_, to_base36_
 
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 
 IS_TEST = False
@@ -29,7 +29,7 @@ IMG_SIZE = (240, 320)
 DATASET_SIZE_LIMIT = 10**4 if not IS_TEST else 30
 PREDICTION_DEPTHS = [1, 2, 3]
 
-DATASET_PATH = '../traininggrounds/screenshots/r001/'
+DATASET_PATH  = 'datasets/r001/'
 INITIAL_FRAME = 'initial_frame.jpg'
 
 
@@ -43,7 +43,7 @@ def main():
 	print('Model created.')
 	this_frame = load_img(INITIAL_FRAME)
 	frame_i = 1
-	while (inp:=input('> ')) not in ['quit', 'exit']:
+	while (inp:=input('> ')) not in ['q', 'quit', 'exit']:
 		try:
 			if inp == '':
 				pass
@@ -334,17 +334,17 @@ def load_nn() -> FramePredictor:
 HELP_MSG = f'''\
 Backrooms AI v{__version__}
 Internal CLI commands:
-? h help 	get help message
-reset    	reset NN
-t        	train NN
-0        	reset frame sequence
-f<number>	move forward  <number> times
-b<number>	move backward <number> times
-l<number>	move left     <number> times
-r<number>	move right    <number> times
-save     	save NN to file
-load     	load NN from file
-quit exit	quit
+? h help   	get help message
+reset      	reset NN
+t          	train NN
+0          	reset frame sequence
+f<number>  	move forward  <number> times
+b<number>  	move backward <number> times
+l<number>  	move left     <number> times
+r<number>  	move right    <number> times
+save       	save NN to file
+load       	load NN from file
+q quit exit	quit
 '''[:-1]
 
 
