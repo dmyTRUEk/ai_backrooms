@@ -25,7 +25,7 @@ EPOCHS = 10 if not IS_TEST else 2
 LEARNING_RATE = 1e-3
 IMG_SIZE = (240, 320)
 DATASET_SIZE_LIMIT = 10**4 if not IS_TEST else 30
-ACTIONS_NS = [1, 3, 10] if not IS_TEST else [1, 3]
+PREDICTION_DEPTHS = [1, 2, 3]
 
 DATASET_PATH = '../traininggrounds/screenshots/r001/'
 INITIAL_FRAME = 'initial_frame.jpg'
@@ -68,51 +68,31 @@ def main():
 				dataset_size_limit = input(f'Dataset Size Limit (default is {DATASET_SIZE_LIMIT}): ')
 				dataset_size_limit = int(dataset_size_limit) if dataset_size_limit != '' else DATASET_SIZE_LIMIT
 
-				actions_ns = input(f'Actions NS (default is {ACTIONS_NS}): ')
-				actions_ns = actions_ns | string_multisplit_([',', ' ']) | map_(int) | list_ if actions_ns != '' else ACTIONS_NS
+				pds = input(f'Prediction Depths (default is {PREDICTION_DEPTHS}): ')
+				pds = pds | string_multisplit_([',', ' ']) | map_(int) | list_ if pds != '' else PREDICTION_DEPTHS
 
 				print()
 				print('Starting training...')
 				print()
 
 				time_trains_begin = datetime.now()
-				for actions_n in actions_ns:
-					train(model, epochs=epochs, learning_rate=learning_rate, dataset_size_limit=dataset_size_limit, actions_n=actions_n)
+				for pd in pds:
+					train(model, epochs=epochs, learning_rate=learning_rate, dataset_size_limit=dataset_size_limit, prediction_depth=pd)
+					save_nn(model, autosave=True)
 					print()
 				time_trains_end = datetime.now()
 				time_trains = time_trains_end - time_trains_begin
 				print(f'TOTAL TIME: {time_trains | time_to_my_format_}')
 
 			elif inp == 'save':
-				now = datetime.now()
-				default_model_filename = f'model_{now.year}-{now.month:02}-{now.day:02}_{now.hour:02}-{now.minute:02}-{now.second:02}.pth'
-				model_filename = input(f'Filename (default is `{default_model_filename}`): ')
-				model_filename = model_filename if model_filename != '' else default_model_filename
-				print(f'Saving model to `{model_filename}`... ', end='', flush=True)
-				torch.save(model.state_dict(), model_filename)
-				print('Saved successfully.')
+				save_nn(model, autosave=False)
 
 			elif inp == 'load':
-				files_in_dir = os.listdir() | sorted_
-				models_in_dir = files_in_dir | filter_(lambda filename: filename.endswith('.pth')) | list_
-				for i, filename in models_in_dir | enumerate_:
-					print(f'{i}. {filename}')
-				model_filename = input(f'Path to file or number (default is last): ')
-				try:
-					model_filename_n = model_filename | int_
-					assert model_filename_n >= 0
-					model_filename = models_in_dir[model_filename_n]
-				except ValueError:
-					model_filename = model_filename if model_filename != '' else models_in_dir[-1]
-				model = FramePredictor()
-				print(f'Loading model from `{model_filename}`... ', end='', flush=True)
-				model.load_state_dict(torch.load(model_filename, weights_only=True))
-				model.to(device)
-				print('Loaded successfully.')
+				model = load_nn()
 
 			elif inp[0] in ['f', 'b', 'l', 'r']:
 				n = max(1, int('0'+inp[1:]))
-				for _ in range(n):
+				for _i in range(n):
 					this_frame = predict_next_frame_prod(model, this_frame, action_to_tensor(inp[0]))
 					save_img(this_frame, frame_i)
 					frame_i += 1
@@ -166,9 +146,9 @@ def train(
 	epochs: int,
 	learning_rate: float,
 	dataset_size_limit: None | int,
-	actions_n: int,
+	prediction_depth: int,
 ):
-	dataset = FrameDataset(DATASET_PATH, dataset_size_limit=dataset_size_limit, actions_n=actions_n)
+	dataset = FrameDataset(DATASET_PATH, dataset_size_limit=dataset_size_limit, prediction_depth=prediction_depth)
 	dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
 	optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate) # options: Adam, AdamW, Lion
@@ -209,7 +189,7 @@ def train(
 		time_epoch_end = datetime.now()
 		time_epoch = time_epoch_end - time_epoch_begin
 		print()
-		print(f'--- Actions: {actions_n} --- Epoch: {epoch+1}/{epochs} --- Loss Log: {-log(total_loss):.3f} --- Relative Loss Log: {-log(rel_loss):.3f} --- Time: {time_epoch | time_to_my_format_} ---')
+		print(f'--- Prediction Depth: {prediction_depth} --- Epoch: {epoch+1}/{epochs} --- Loss Log: {-log(total_loss):.3f} --- Relative Loss Log: {-log(rel_loss):.3f} --- Time: {time_epoch | time_to_my_format_} ---')
 
 	time_train_end = datetime.now()
 	time_train = time_train_end - time_train_begin
@@ -219,8 +199,8 @@ def train(
 
 # UwU Dataset Loader
 class FrameDataset(Dataset):
-	def __init__(self, folder: str, *, dataset_size_limit: None | int = None, actions_n: int):
-		assert actions_n > 0
+	def __init__(self, folder: str, *, dataset_size_limit: None | int = None, prediction_depth: int):
+		assert prediction_depth > 0
 		self.folder = folder
 		self.samples: list[tuple[list[str], list[str]]] = []
 		self.img_cache: dict[str, Image.Image] = {} # Cache imgs for that extra zoomies >:3
@@ -229,12 +209,12 @@ class FrameDataset(Dataset):
 		for file_i, filename in all_files | enumerate_ | list_ | shuffled_:
 			if dataset_size_limit is not None and len(self.samples) >= dataset_size_limit:
 				break
-			if file_i+actions_n >= len(all_files):
+			if file_i+prediction_depth >= len(all_files):
 				continue
 
 			filenames = [filename]
 			actions = []
-			for k in range(1, actions_n+1):
+			for k in range(1, prediction_depth+1):
 				filenames.append(all_files[file_i+k])
 				actions.append(action_from_filename(all_files[file_i+k-1]))
 			self.samples.append((filenames.copy(), actions.copy()))
@@ -311,6 +291,39 @@ def img_tensor_to_pil(img_tensor):
 	arr_np = (img.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
 	img_pil = Image.fromarray(arr_np)
 	return img_pil
+
+
+
+def save_nn(model: FramePredictor, *, autosave: bool):
+	now = datetime.now()
+	default_model_filename = f'model_{now.year}-{now.month:02}-{now.day:02}_{now.hour:02}-{now.minute:02}-{now.second:02}.pth'
+	if not autosave:
+		model_filename = input(f'Filename (default is `{default_model_filename}`): ')
+		model_filename = model_filename if model_filename != '' else default_model_filename
+	else:
+		model_filename = default_model_filename
+	print(f'Saving model to `{model_filename}`... ', end='', flush=True)
+	torch.save(model.state_dict(), model_filename)
+	print('Saved successfully.')
+
+def load_nn() -> FramePredictor:
+	files_in_dir = os.listdir() | sorted_
+	models_in_dir = files_in_dir | filter_(lambda filename: filename.endswith('.pth')) | list_
+	for i, filename in models_in_dir | enumerate_:
+		print(f'{i}. {filename}')
+	model_filename = input(f'Path to file or number (default is last): ')
+	try:
+		model_filename_n = model_filename | int_
+		assert model_filename_n >= 0
+		model_filename = models_in_dir[model_filename_n]
+	except ValueError:
+		model_filename = model_filename if model_filename != '' else models_in_dir[-1]
+	model = FramePredictor()
+	print(f'Loading model from `{model_filename}`... ', end='', flush=True)
+	model.load_state_dict(torch.load(model_filename, weights_only=True))
+	model.to(device)
+	print('Loaded successfully.')
+	return model
 
 
 
