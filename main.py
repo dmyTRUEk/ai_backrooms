@@ -15,7 +15,7 @@ from pipe import enumerate as enumerate_, map as map_, filter as filter_
 from pipe_ext import int_, list_, shuffled_, sorted_, string_multisplit_, time_to_my_format_, to_base36_
 
 
-__version__ = "0.3.4"
+__version__ = "0.4.0"
 
 
 IS_TEST = False
@@ -29,7 +29,7 @@ IMG_SIZE = (240, 320)
 DATASET_SIZE_LIMIT = 10**4 if not IS_TEST else 30
 PREDICTION_DEPTHS = [1, 2, 3]
 
-DATASET_PATH  = 'datasets/r001/'
+DATASET_PATH  = 'datasets/r002-111k/'
 INITIAL_FRAME = 'initial_frame.jpg'
 
 
@@ -153,7 +153,7 @@ def train(
 	dataset = FrameDataset(DATASET_PATH, dataset_size_limit=dataset_size_limit, prediction_depth=prediction_depth)
 	dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-	optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate) # options: Adam, AdamW, Lion
+	optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate) # good options: Adam, AdamW, Lion?
 	criterion = nn.MSELoss()
 	model.train()
 	# torch.autograd.set_detect_anomaly(True)
